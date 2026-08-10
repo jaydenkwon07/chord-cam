@@ -88,6 +88,47 @@ takes), 13,132 samples total, 155 takes across all 8 chords.
 - Datasets are gitignored (`/data`) and passed by path to `npm run eval` /
   `scripts/loto.ts` — not committed, since they're large personal recordings.
 
+## 0007 — C/Dm/Am/D confuser family: mostly bad takes, a real residue underneath
+
+Dug into the 0006 confuser family with `scripts/diag.ts` (per-take LOTO). Per-take
+accuracy is bimodal, not uniformly mediocre: most takes score 100% or close to
+it, but 11 takes (6.9% of samples) score 0–85% and account for **84% of the
+total error mass** in C/D/Dm/Am. Those 11 cluster into two tight windows —
+5 consecutive takes (C, C, C, D, Am) in a 3-minute span on 2026-07-30, and 5
+consecutive Dm takes in an 80-second span on 2026-08-04 — the same
+session-drift artifact 0005 already caught once for C/Am.
+
+Re-running LOTO with just those 11 takes excluded:
+
+| | original | bad takes excluded |
+|---|---|---|
+| Overall | 95.5% | **97.5%** |
+| C | 94.0% | 99.1% |
+| Am | 96.9% | 98.6% |
+| D | 91.9% | 96.3% |
+| Dm | 90.6% | 93.8% |
+| C↔Dm confusion | 93 | 3 |
+
+C's confusion with Dm nearly vanishes once the bad takes are dropped — that
+part of 0006's confuser story was mostly session noise, not shape overlap.
+
+**What's left is real and didn't move when the noise was removed:**
+
+- **Dm↔Am (74→75, unchanged).** Both are compact minor-shape three-finger
+  clusters; `normalize()`'s position/scale/roll invariance is exactly what
+  makes them close — it can't see *which string* a finger lands on, only
+  relative finger geometry, and that's genuinely similar between these two.
+- **D→Em (57→52, barely moved).** Surprising since D (3 fingers) and Em
+  (2 fingers, sparse) shouldn't be geometrically close. Best working
+  hypothesis: occlusion, not shape — D's third finger (high on the B string)
+  intermittently drops out of detection and the landmark set collapses
+  toward Em's. Unconfirmed; would need frame-level inspection to be sure.
+
+**Action:** re-record the two flagged session windows (2026-07-30 18:13–18:17,
+2026-08-04 19:44–19:46) with a camera/position check first, then re-run
+`scripts/loto.ts` — expect a landing near 97.5%, with Dm↔Am and D→Em standing
+as the honest residual ceiling for this vocabulary, not a bug to keep chasing.
+
 ## 0004 — Fretting-hand selection
 
 Capture and live inference both act on a single hand. A UI toggle picks which
