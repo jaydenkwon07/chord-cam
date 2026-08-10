@@ -1,4 +1,4 @@
 {
-  "_comment": "Frozen Phase 1 vocabulary as DATA. Add 'A', 'E', 'Dm' here (then record takes for them) to extend — no code change. Order is display order.",
-  "chords": ["C", "G", "D", "Em", "Am"]
+  "_comment": "Frozen Phase 1 vocabulary as DATA. Now the full 8. Order is display order.",
+  "chords": ["C", "A", "G", "E", "D", "Em", "Am", "Dm"]
 }

@@ -54,9 +54,18 @@ for (const t of labels) {
   console.log(`  ${t.padEnd(3)} ${row}`);
 }
 
-// Call out the confuser pairs CLAUDE.md flags (E not in the starting vocab).
+// Watched confusers. On a *clean* dataset the irreducible overlap is the compact
+// three-finger family — C, Dm, Am, D — whose centroids sit ~0.9 apart (the
+// tightest in the matrix). They differ mainly by which string/fret set the same
+// diagonal shape occupies, and normalize() (wrist origin + hand-size scale)
+// deletes exactly that absolute position. Recovering it needs phase-2 fretboard
+// geometry, not a KNN tweak.
+//
+// NB: E↔Am, once assumed shape-degenerate ("E is the Am shape shifted across
+// strings"), turned out to be a data artifact — a few mislabelled/misfretted
+// takes drove it. On cleaned data E and Am separate fine, so it's dropped here.
 console.log("\nWatched confusers:");
-for (const [a, b] of [["C", "Am"], ["E", "Em"]] as const) {
+for (const [a, b] of [["C", "Dm"], ["Dm", "Am"], ["D", "Dm"]] as const) {
   if (m.confusion[a] && m.confusion[b]) {
     const ab = m.confusion[a][b] ?? 0;
     const ba = m.confusion[b][a] ?? 0;

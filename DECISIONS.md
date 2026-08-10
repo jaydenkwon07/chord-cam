@@ -70,6 +70,24 @@ sessions and re-running `npm run eval` / `loto` will tighten this.
 Harnesses: `npm run eval -- <json> [k] [testTakes]` (single split),
 `scripts/loto.ts` (cross-val), `scripts/diag.ts` (per-take breakdown).
 
+## 0006 — Full 8-chord vocabulary eval
+
+Vocabulary expanded to the full frozen Phase 1 set (`C A G E D Em Am Dm`); new
+dataset recorded with real takes for the three additions (A: 19, E: 16, Dm: 20
+takes), 13,132 samples total, 155 takes across all 8 chords.
+
+- **Leave-one-take-out CV (155 folds): 95.5%** overall — higher than the
+  5-chord baseline (91.4%), not lower, despite more classes.
+- **The C/Dm/Am/D confuser family predicted in 0001-era eval notes is real**
+  and is now the dominant error source: Dm↔C (93+22), Dm↔Am (32+74), D↔Dm
+  (40+52), D↔Em (15+57), D↔Am (15+33). These are exactly the compact
+  three-finger open shapes sharing string/fret geometry that `normalize()`
+  makes position-invariant.
+- A, G are near-perfect (99.9%, 97.7%); E and Em are solid (~97% each) —
+  E↔Am fear from early notes stays a non-issue.
+- Datasets are gitignored (`/data`) and passed by path to `npm run eval` /
+  `scripts/loto.ts` — not committed, since they're large personal recordings.
+
 ## 0004 — Fretting-hand selection
 
 Capture and live inference both act on a single hand. A UI toggle picks which
