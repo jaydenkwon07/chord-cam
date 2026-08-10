@@ -14,7 +14,6 @@ import { useRecognizer } from "./useRecognizer.ts";
 import { fingering } from "./lib/chords.ts";
 import { computeHomography, fretGrid, project, type Point } from "./lib/fretboard.ts";
 import { drawOverlay, type OverlayScene } from "./overlayDraw.ts";
-import { sizeCanvasToVideo } from "./draw.ts";
 import vocab from "./data/vocabulary.json";
 
 // Phase 1 · Stage A capture tool. Reuses the live feed + landmark detection,
@@ -209,7 +208,17 @@ export function App() {
       if (!active) return;
       rafId = requestAnimationFrame(loop);
       if (video.readyState < 2) return;
-      sizeCanvasToVideo(canvas, video);
+      // Size to the overlay canvas's own displayed box (display pixels), not
+      // the video's intrinsic resolution — calibration handles are read back
+      // in display-box space, and normalized drawing must share that space or
+      // CSS object-fit:cover skews the projected grid off the real fretboard.
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+        canvas.width = w;
+        canvas.height = h;
+      }
 
       const c = cornersRef.current;
       const H = c ? computeHomography(c) : null;
@@ -314,7 +323,10 @@ export function App() {
 
       {/* HUD, top-left */}
       <div style={panel({ top: 12, left: 12 })}>
-        <strong>chord-cam · Phase 1 · capture</strong>
+        <strong>
+          chord-cam ·{" "}
+          {mode === "capture" ? "Phase 1 · capture" : mode === "recognize" ? "Phase 1 · recognize" : "Phase 2 · practice"}
+        </strong>
         <span>FPS: {hud.fps.toFixed(0)}</span>
         <span
           style={{
@@ -549,39 +561,51 @@ export function App() {
       {/* Calibration handles, drawn over the video while calibrating */}
       {mode === "overlay" && calibrating && corners && (
         <>
-          {corners.map((c, i) => (
-            <div
-              key={i}
-              onPointerDown={(e) => {
-                (e.target as HTMLElement).setPointerCapture(e.pointerId);
-              }}
-              onPointerMove={(e) => {
-                if (e.buttons === 0) return;
-                const rect = overlayCanvasRef.current?.getBoundingClientRect();
-                if (!rect) return;
-                const x = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-                const y = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
-                setCorners((prev) => {
-                  if (!prev) return prev;
-                  const next = [...prev] as Corners;
-                  next[i] = { x, y };
-                  return next;
-                });
-              }}
-              style={{
-                position: "absolute",
-                left: `calc(${c.x * 100}% - 12px)`,
-                top: `calc(${c.y * 100}% - 12px)`,
-                width: 24,
-                height: 24,
-                borderRadius: "50%",
-                border: "2px solid #fff",
-                background: "rgba(21,101,192,0.7)",
-                cursor: "grab",
-                touchAction: "none",
-              }}
-            />
-          ))}
+          {corners.map((c, i) => {
+            // 0,1 = nut top/bottom; 2,3 = fret-3 top/bottom (see Corners type).
+            const isNut = i < 2;
+            return (
+              <div
+                key={i}
+                onPointerDown={(e) => {
+                  (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                }}
+                onPointerMove={(e) => {
+                  if (e.buttons === 0) return;
+                  const rect = overlayCanvasRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+                  const x = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                  const y = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+                  setCorners((prev) => {
+                    if (!prev) return prev;
+                    const next = [...prev] as Corners;
+                    next[i] = { x, y };
+                    return next;
+                  });
+                }}
+                style={{
+                  position: "absolute",
+                  left: `calc(${c.x * 100}% - 12px)`,
+                  top: `calc(${c.y * 100}% - 12px)`,
+                  width: 24,
+                  height: 24,
+                  borderRadius: "50%",
+                  border: "2px solid #fff",
+                  background: isNut ? "rgba(21,101,192,0.8)" : "rgba(230,126,34,0.8)",
+                  cursor: "grab",
+                  touchAction: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  userSelect: "none",
+                }}
+              >
+                {isNut ? "nut" : "3"}
+              </div>
+            );
+          })}
         </>
       )}
     </div>
