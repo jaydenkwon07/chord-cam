@@ -11,6 +11,9 @@ import { addSamples, clearAll, deleteTake, getAllSamples } from "./lib/db.ts";
 import { deserializeDataset, serializeDataset } from "./lib/serialize.ts";
 import { createKnnClassifier, type Classifier } from "./lib/knn.ts";
 import { useRecognizer } from "./useRecognizer.ts";
+import { computeHomography, fretGrid, type Point } from "./lib/fretboard.ts";
+import { drawOverlay, type OverlayScene } from "./overlayDraw.ts";
+import { sizeCanvasToVideo } from "./draw.ts";
 import vocab from "./data/vocabulary.json";
 
 // Phase 1 · Stage A capture tool. Reuses the live feed + landmark detection,
@@ -21,11 +24,22 @@ const CHORDS: string[] = vocab.chords;
 const CAPTURE_MS = 1500;
 const KNN_K = 5;
 
-type Mode = "capture" | "recognize";
+type Mode = "capture" | "recognize" | "overlay";
+
+const CALIBRATION_KEY = "chord-cam-calibration";
+type Corners = [Point, Point, Point, Point]; // nutTop, nutBottom, fret3Top, fret3Bottom (normalized)
+
+const DEFAULT_CORNERS: Corners = [
+  { x: 0.3, y: 0.35 },
+  { x: 0.3, y: 0.65 },
+  { x: 0.7, y: 0.35 },
+  { x: 0.7, y: 0.65 },
+];
 
 export function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const frettingHandRef = useRef<Handedness>("Left");
 
   const { status, error, hud, latestRef } = useHandLandmarker(
@@ -35,6 +49,19 @@ export function App() {
   );
 
   const [mode, setMode] = useState<Mode>("capture");
+
+  const [corners, setCorners] = useState<Corners | null>(() => {
+    try {
+      const raw = localStorage.getItem(CALIBRATION_KEY);
+      return raw ? (JSON.parse(raw) as Corners) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [calibrating, setCalibrating] = useState(false);
+  const cornersRef = useRef<Corners | null>(corners);
+  cornersRef.current = corners;
+
   const [classifier, setClassifier] = useState<Classifier | null>(null);
   const [trainCount, setTrainCount] = useState(0);
   const recognition = useRecognizer(latestRef, mode === "recognize" ? classifier : null);
@@ -135,6 +162,60 @@ export function App() {
     frettingHandRef.current = h;
   };
 
+  const startCalibration = () => {
+    setCorners((c) => c ?? DEFAULT_CORNERS);
+    setCalibrating(true);
+  };
+
+  const finishCalibration = () => {
+    if (corners) localStorage.setItem(CALIBRATION_KEY, JSON.stringify(corners));
+    setCalibrating(false);
+  };
+
+  // Entering Practice for the first time (no persisted calibration) auto-seeds
+  // the default quad and drops straight into calibrating so handles are on
+  // screen immediately, instead of showing drag instructions with nothing to drag.
+  useEffect(() => {
+    if (mode === "overlay" && cornersRef.current === null) startCalibration();
+  }, [mode]);
+
+  // Live grid draw for Practice mode. Targets/markers arrive in Task 6; for now
+  // this just projects the calibrated fretboard grid onto the overlay canvas.
+  useEffect(() => {
+    if (mode !== "overlay") return;
+    const video = videoRef.current;
+    const canvas = overlayCanvasRef.current;
+    if (!video || !canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let active = true;
+    let rafId = 0;
+    const loop = () => {
+      if (!active) return;
+      rafId = requestAnimationFrame(loop);
+      if (video.readyState < 2) return;
+      sizeCanvasToVideo(canvas, video);
+
+      const c = cornersRef.current;
+      const H = c ? computeHomography(c) : null;
+      const scene: OverlayScene = {
+        grid: H ? fretGrid(H, 3) : null,
+        targets: [],
+        openMarkers: [],
+        mutedMarkers: [],
+        matched: false,
+      };
+      drawOverlay(ctx, scene);
+    };
+    rafId = requestAnimationFrame(loop);
+    return () => {
+      active = false;
+      cancelAnimationFrame(rafId);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+  }, [mode]);
+
   const onExport = async () => {
     const all = await getAllSamples();
     const blob = new Blob([serializeDataset(all)], { type: "application/json" });
@@ -206,6 +287,7 @@ export function App() {
         playsInline
       />
       <canvas ref={canvasRef} style={fill} />
+      <canvas ref={overlayCanvasRef} style={fill} />
 
       {/* HUD, top-left */}
       <div style={panel({ top: 12, left: 12 })}>
@@ -240,9 +322,9 @@ export function App() {
           padding: 6,
         }}
       >
-        {(["capture", "recognize"] as Mode[]).map((m) => (
+        {(["capture", "recognize", "overlay"] as Mode[]).map((m) => (
           <button key={m} onClick={() => setMode(m)} style={toggle(mode === m)}>
-            {m === "capture" ? "Capture" : "Recognize"}
+            {m === "capture" ? "Capture" : m === "recognize" ? "Recognize" : "Practice"}
           </button>
         ))}
       </div>
@@ -384,6 +466,67 @@ export function App() {
         </div>
         {notice && <span style={dim}>{notice}</span>}
       </div>
+      )}
+
+      {/* Practice controls, right side */}
+      {mode === "overlay" && (
+        <div style={{ ...panel({ top: 12, right: 12 }), width: 280, gap: 10 }}>
+          <span style={dim}>Practice — overlay fingering on your fretboard</span>
+          {!corners || calibrating ? (
+            <>
+              <span style={dim}>
+                Drag the 4 handles to the corners of your fretboard: nut &amp; fret 3,
+                high-E &amp; low-E side.
+              </span>
+              <button onClick={finishCalibration} disabled={!corners} style={bigButton}>
+                Done calibrating
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setCalibrating(true)} style={smallButton}>
+              Recalibrate
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Calibration handles, drawn over the video while calibrating */}
+      {mode === "overlay" && calibrating && corners && (
+        <>
+          {corners.map((c, i) => (
+            <div
+              key={i}
+              onPointerDown={(e) => {
+                (e.target as HTMLElement).setPointerCapture(e.pointerId);
+              }}
+              onPointerMove={(e) => {
+                if (e.buttons === 0) return;
+                const rect = overlayCanvasRef.current?.getBoundingClientRect();
+                if (!rect) return;
+                const x = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                const y = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+                setCorners((prev) => {
+                  if (!prev) return prev;
+                  const next = [...prev] as Corners;
+                  next[i] = { x, y };
+                  return next;
+                });
+              }}
+              style={{
+                position: "absolute",
+                left: `calc(${c.x * 100}% - 12px)`,
+                top: `calc(${c.y * 100}% - 12px)`,
+                width: 24,
+                height: 24,
+                borderRadius: "50%",
+                border: "2px solid #fff",
+                background: "rgba(21,101,192,0.7)",
+                cursor: "grab",
+                touchAction: "none",
+              }}
+            />
+          ))}
+        </>
       )}
     </div>
   );
