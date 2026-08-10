@@ -1,5 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { applyHomography, computeHomography, type Point } from "./fretboard.ts";
+import type { FretPosition } from "./chords.ts";
+import {
+  applyHomography,
+  cellToCanonical,
+  computeHomography,
+  fretGrid,
+  fretWireU,
+  project,
+  type Point,
+} from "./fretboard.ts";
 
 function close(a: Point, b: Point, tol = 1e-9): void {
   expect(Math.abs(a.x - b.x)).toBeLessThan(tol);
@@ -53,5 +62,59 @@ describe("computeHomography / applyHomography", () => {
 
   test("returns null when not given exactly 4 corners", () => {
     expect(computeHomography([{ x: 0, y: 0 }])).toBeNull();
+  });
+});
+
+describe("fret geometry", () => {
+  test("fret-wire distances span 0 at the nut to 1 at fret 3, monotonic", () => {
+    expect(fretWireU(0)).toBeCloseTo(0, 12);
+    expect(fretWireU(3)).toBeCloseTo(1, 12);
+    expect(fretWireU(0)).toBeLessThan(fretWireU(1));
+    expect(fretWireU(1)).toBeLessThan(fretWireU(2));
+    expect(fretWireU(2)).toBeLessThan(fretWireU(3));
+  });
+
+  test("cellToCanonical places strings across v and frets along u", () => {
+    expect(cellToCanonical({ string: 1, fret: 1 }).y).toBeCloseTo(0, 12); // high E
+    expect(cellToCanonical({ string: 6, fret: 1 }).y).toBeCloseTo(1, 12); // low E
+    expect(cellToCanonical({ string: 3, fret: 1 }).y).toBeCloseTo(0.4, 12);
+    // fret cell centres increase along the neck
+    const u1 = cellToCanonical({ string: 1, fret: 1 }).x;
+    const u2 = cellToCanonical({ string: 1, fret: 2 }).x;
+    const u3 = cellToCanonical({ string: 1, fret: 3 }).x;
+    expect(u1).toBeLessThan(u2);
+    expect(u2).toBeLessThan(u3);
+  });
+
+  test("an open string (fret 0) sits at the nut (u = 0)", () => {
+    expect(cellToCanonical({ string: 4, fret: 0 }).x).toBeCloseTo(0, 12);
+  });
+
+  test("fretGrid returns one segment per string and nut..N fret lines", () => {
+    const corners: Point[] = [
+      { x: 0.1, y: 0.2 },
+      { x: 0.1, y: 0.6 },
+      { x: 0.7, y: 0.2 },
+      { x: 0.7, y: 0.6 },
+    ];
+    const H = computeHomography(corners)!;
+    const grid = fretGrid(H, 3);
+    expect(grid.strings).toHaveLength(6);
+    expect(grid.frets).toHaveLength(4); // nut + frets 1,2,3
+    // The nut line (frets[0]) runs between the two nut corners.
+    close(grid.frets[0].a, corners[0]);
+    close(grid.frets[0].b, corners[1]);
+  });
+
+  test("project maps a fret position through H consistently with cellToCanonical", () => {
+    const corners: Point[] = [
+      { x: 0.1, y: 0.2 },
+      { x: 0.1, y: 0.6 },
+      { x: 0.7, y: 0.2 },
+      { x: 0.7, y: 0.6 },
+    ];
+    const H = computeHomography(corners)!;
+    const cell: FretPosition = { string: 5, fret: 3 };
+    close(project(cell, H), applyHomography(H, cellToCanonical(cell)));
   });
 });

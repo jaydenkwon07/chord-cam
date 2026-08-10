@@ -5,6 +5,8 @@
 // Canonical coords: u along the neck (0 = nut, 1 = fret 3), v across the strings
 // (0 = string 1 / high E, 1 = string 6 / low E).
 
+import type { FretPosition } from "./chords.ts";
+
 export interface Point {
   x: number;
   y: number;
@@ -77,4 +79,57 @@ export function applyHomography(H: Mat3, p: Point): Point {
     x: (H[0] * p.x + H[1] * p.y + H[2]) / d,
     y: (H[3] * p.x + H[4] * p.y + H[5]) / d,
   };
+}
+
+// Distance from the nut to fret-wire n as a fraction of the calibrated span
+// (nut -> fret CALIBRATED_FRETS), using equal-temperament spacing.
+export function fretWireU(n: number): number {
+  const span = 1 - Math.pow(2, -CALIBRATED_FRETS / 12);
+  return (1 - Math.pow(2, -n / 12)) / span;
+}
+
+// Canonical u of a fretted note at fret f: the midpoint between fret-wires
+// (f-1) and f, where a finger actually presses.
+function cellCenterU(fret: number): number {
+  return (fretWireU(fret - 1) + fretWireU(fret)) / 2;
+}
+
+// Canonical v of a string (1 = high E -> 0, 6 = low E -> 1).
+function stringV(string: number): number {
+  return (string - 1) / (STRINGS - 1);
+}
+
+// Canonical (u,v) for a fret position. fret 0 (open) sits at the nut (u = 0).
+export function cellToCanonical(cell: FretPosition): Point {
+  return {
+    x: cell.fret === 0 ? 0 : cellCenterU(cell.fret),
+    y: stringV(cell.string),
+  };
+}
+
+// Project a fret position into image (display) coords via H.
+export function project(cell: FretPosition, H: Mat3): Point {
+  return applyHomography(H, cellToCanonical(cell));
+}
+
+// The string and fret line segments for drawing the calibration grid, in image
+// (display) coords. strings: one per string across the span; frets: nut..numFrets.
+export function fretGrid(H: Mat3, numFrets: number): { strings: Segment[]; frets: Segment[] } {
+  const strings: Segment[] = [];
+  for (let s = 1; s <= STRINGS; s++) {
+    const v = stringV(s);
+    strings.push({
+      a: applyHomography(H, { x: 0, y: v }),
+      b: applyHomography(H, { x: 1, y: v }),
+    });
+  }
+  const frets: Segment[] = [];
+  for (let n = 0; n <= numFrets; n++) {
+    const u = fretWireU(n);
+    frets.push({
+      a: applyHomography(H, { x: u, y: 0 }),
+      b: applyHomography(H, { x: u, y: 1 }),
+    });
+  }
+  return { strings, frets };
 }
