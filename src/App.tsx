@@ -11,7 +11,8 @@ import { addSamples, clearAll, deleteTake, getAllSamples } from "./lib/db.ts";
 import { deserializeDataset, serializeDataset } from "./lib/serialize.ts";
 import { createKnnClassifier, type Classifier } from "./lib/knn.ts";
 import { useRecognizer } from "./useRecognizer.ts";
-import { computeHomography, fretGrid, type Point } from "./lib/fretboard.ts";
+import { fingering } from "./lib/chords.ts";
+import { computeHomography, fretGrid, project, type Point } from "./lib/fretboard.ts";
 import { drawOverlay, type OverlayScene } from "./overlayDraw.ts";
 import { sizeCanvasToVideo } from "./draw.ts";
 import vocab from "./data/vocabulary.json";
@@ -64,7 +65,18 @@ export function App() {
 
   const [classifier, setClassifier] = useState<Classifier | null>(null);
   const [trainCount, setTrainCount] = useState(0);
-  const recognition = useRecognizer(latestRef, mode === "recognize" ? classifier : null);
+  const recognition = useRecognizer(
+    latestRef,
+    mode === "recognize" || mode === "overlay" ? classifier : null,
+  );
+
+  const [targetChord, setTargetChord] = useState<string>(CHORDS[0]);
+  const targetChordRef = useRef(targetChord);
+  targetChordRef.current = targetChord;
+
+  const matchedRef = useRef(false);
+  matchedRef.current =
+    recognition.handVisible && recognition.label === targetChord;
 
   const [frettingHand, setFrettingHand] = useState<Handedness>("Left");
   const [selectedChord, setSelectedChord] = useState<string>(CHORDS[0]);
@@ -94,9 +106,10 @@ export function App() {
     void refreshCounts();
   }, [refreshCounts]);
 
-  // (Re)build the classifier from the recorded dataset when entering Recognize.
+  // (Re)build the classifier from the recorded dataset when entering Recognize
+  // or Practice (Practice reuses the classifier for its live match indicator).
   useEffect(() => {
-    if (mode !== "recognize") return;
+    if (mode !== "recognize" && mode !== "overlay") return;
     let active = true;
     void getAllSamples().then((all) => {
       if (!active) return;
@@ -179,8 +192,9 @@ export function App() {
     if (mode === "overlay" && cornersRef.current === null) startCalibration();
   }, [mode]);
 
-  // Live grid draw for Practice mode. Targets/markers arrive in Task 6; for now
-  // this just projects the calibrated fretboard grid onto the overlay canvas.
+  // Live overlay draw for Practice mode: projects the calibrated fretboard
+  // grid plus the target chord's fretted/open/muted positions, and colors the
+  // target rings by whether the live classifier currently agrees.
   useEffect(() => {
     if (mode !== "overlay") return;
     const video = videoRef.current;
@@ -199,12 +213,21 @@ export function App() {
 
       const c = cornersRef.current;
       const H = c ? computeHomography(c) : null;
+      let targets: Point[] = [];
+      let openMarkers: Point[] = [];
+      let mutedMarkers: Point[] = [];
+      if (H) {
+        const f = fingering(targetChordRef.current);
+        targets = f.frets.map((p) => project(p, H));
+        openMarkers = f.open.map((s) => project({ string: s, fret: 0 }, H));
+        mutedMarkers = f.muted.map((s) => project({ string: s, fret: 0 }, H));
+      }
       const scene: OverlayScene = {
         grid: H ? fretGrid(H, 3) : null,
-        targets: [],
-        openMarkers: [],
-        mutedMarkers: [],
-        matched: false,
+        targets,
+        openMarkers,
+        mutedMarkers,
+        matched: matchedRef.current,
       };
       drawOverlay(ctx, scene);
     };
@@ -486,6 +509,39 @@ export function App() {
             <button onClick={() => setCalibrating(true)} style={smallButton}>
               Recalibrate
             </button>
+          )}
+          {corners && !calibrating && (
+            <>
+              <span style={dim}>Target chord</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {CHORDS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setTargetChord(c)}
+                    style={toggle(targetChord === c)}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <span
+                style={{
+                  ...pill,
+                  background: matchedRef.current ? "#0a7d2c" : "#333",
+                }}
+              >
+                {!recognition.handVisible
+                  ? "show your fretting hand"
+                  : matchedRef.current
+                    ? `MATCH · ${targetChord}`
+                    : `not yet · reads ${recognition.label ?? "?"}`}
+              </span>
+              <span style={{ ...dim, fontSize: 11 }}>
+                "Match" means your hand shape classifies as {targetChord} — it
+                doesn't verify each finger's string. Inherits Phase 1 confusers
+                (e.g. Dm/Am).
+              </span>
+            </>
           )}
         </div>
       )}
