@@ -3,7 +3,10 @@
 // All points are NORMALIZED display coordinates (0..1 of canvas width/height),
 // so the math is resolution-independent; the drawing edge scales to pixels.
 // Canonical coords: u along the neck (0 = nut, 1 = fret 3), v across the strings
-// (0 = string 1 / high E, 1 = string 6 / low E).
+// (0 = string 1 / high E, 1 = string 6 / low E). In the self-facing playing-
+// position view the high-E string sits at the BOTTOM of the frame, so the
+// canonical v-axis maps to the calibration handles bottom -> top (see
+// CANONICAL_CORNERS): v = 0 (high E) is the bottom handle pair.
 
 import type { FretPosition } from "./chords.ts";
 
@@ -22,13 +25,16 @@ export interface Segment {
 export const STRINGS = 6;
 export const CALIBRATED_FRETS = 3; // the nut -> fret 3 span the user calibrates
 
-// The canonical corners the four dragged image corners correspond to, in order:
-// [nut@string1, nut@string6, fret3@string1, fret3@string6].
+// The canonical corners the four dragged image corners correspond to, in App
+// order [nutTop, nutBottom, fret3Top, fret3Bottom]. In the self-facing view the
+// high-E string (v = 0) is at the BOTTOM, so the TOP handles are the low-E side
+// (v = 1) and the BOTTOM handles are the high-E side (v = 0):
+// [nut@string6, nut@string1, fret3@string6, fret3@string1].
 const CANONICAL_CORNERS: Point[] = [
-  { x: 0, y: 0 },
   { x: 0, y: 1 },
-  { x: 1, y: 0 },
+  { x: 0, y: 0 },
   { x: 1, y: 1 },
+  { x: 1, y: 0 },
 ];
 
 // Solve an n x n linear system A x = b by Gaussian elimination with partial

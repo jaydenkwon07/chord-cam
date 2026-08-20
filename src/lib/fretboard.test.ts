@@ -16,12 +16,14 @@ function close(a: Point, b: Point, tol = 1e-9): void {
 }
 
 describe("computeHomography / applyHomography", () => {
-  // Canonical corners, in the fixed order computeHomography expects.
+  // Canonical corners, in the fixed order computeHomography expects (App order
+  // [nutTop, nutBottom, fret3Top, fret3Bottom]; top handles are the low-E side,
+  // so v = 1 up top, v = 0 at the bottom).
   const canonical: Point[] = [
-    { x: 0, y: 0 },
     { x: 0, y: 1 },
-    { x: 1, y: 0 },
+    { x: 0, y: 0 },
     { x: 1, y: 1 },
+    { x: 1, y: 0 },
   ];
 
   test("round-trips: canonical corners map back to the input image corners", () => {
@@ -101,9 +103,26 @@ describe("fret geometry", () => {
     const grid = fretGrid(H, 3);
     expect(grid.strings).toHaveLength(6);
     expect(grid.frets).toHaveLength(4); // nut + frets 1,2,3
-    // The nut line (frets[0]) runs between the two nut corners.
-    close(grid.frets[0].a, corners[0]);
-    close(grid.frets[0].b, corners[1]);
+    // The nut line (frets[0]) runs between the two nut corners. Its endpoints
+    // are the canonical (0,0)=high-E and (0,1)=low-E ends, which map to the
+    // bottom (corners[1]) and top (corners[0]) nut handles respectively.
+    close(grid.frets[0].a, corners[1]);
+    close(grid.frets[0].b, corners[0]);
+  });
+
+  test("high E projects below low E when the top handles are up-screen", () => {
+    // Axis-aligned quad, top handles at the smaller y (top of frame).
+    const corners: Point[] = [
+      { x: 0.1, y: 0.2 }, // nutTop
+      { x: 0.1, y: 0.6 }, // nutBottom
+      { x: 0.7, y: 0.2 }, // fret3Top
+      { x: 0.7, y: 0.6 }, // fret3Bottom
+    ];
+    const H = computeHomography(corners)!;
+    const highE = project({ string: 1, fret: 1 }, H); // high E
+    const lowE = project({ string: 6, fret: 1 }, H); // low E
+    // High E must render lower on screen (larger y) than low E.
+    expect(highE.y).toBeGreaterThan(lowE.y);
   });
 
   test("project maps a fret position through H consistently with cellToCanonical", () => {
