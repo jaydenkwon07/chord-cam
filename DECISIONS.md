@@ -168,7 +168,7 @@ string. Same class of mirror ambiguity as the fretting-hand toggle (0004).
   a different mirror/camera/handedness inverts it. Default matches the observed
   orientation; the toggle survives reload.
 
-**Status: not fully live-verified yet.** Confirmed live: calibration + the
-upside-down finding. *Pending:* re-checking ring alignment across a spread of
-shapes (C, G, D, Em) after the fix, and confirming the green match fires/clears
-correctly. Merge to `main` is held until that passes.
+**Status: live-verified, merged to `main`.** Confirmed on camera after the fix:
+calibration drag works, target rings land on the correct strings across a spread
+of shapes (C, G, D, Em), and the green match fires/clears correctly. Phase 2
+delivered.
