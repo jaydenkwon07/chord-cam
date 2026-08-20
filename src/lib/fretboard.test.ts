@@ -125,6 +125,20 @@ describe("fret geometry", () => {
     expect(highE.y).toBeGreaterThan(lowE.y);
   });
 
+  test("flipStrings inverts the string orientation", () => {
+    const corners: Point[] = [
+      { x: 0.1, y: 0.2 }, // nutTop
+      { x: 0.1, y: 0.6 }, // nutBottom
+      { x: 0.7, y: 0.2 }, // fret3Top
+      { x: 0.7, y: 0.6 }, // fret3Bottom
+    ];
+    const H = computeHomography(corners, true)!;
+    const highE = project({ string: 1, fret: 1 }, H);
+    const lowE = project({ string: 6, fret: 1 }, H);
+    // Flipped: high E now renders higher on screen (smaller y) than low E.
+    expect(highE.y).toBeLessThan(lowE.y);
+  });
+
   test("project maps a fret position through H consistently with cellToCanonical", () => {
     const corners: Point[] = [
       { x: 0.1, y: 0.2 },

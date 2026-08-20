@@ -27,6 +27,7 @@ const KNN_K = 5;
 type Mode = "capture" | "recognize" | "overlay";
 
 const CALIBRATION_KEY = "chord-cam-calibration";
+const FLIP_STRINGS_KEY = "chord-cam-flip-strings";
 type Corners = [Point, Point, Point, Point]; // nutTop, nutBottom, fret3Top, fret3Bottom (normalized)
 
 const DEFAULT_CORNERS: Corners = [
@@ -61,6 +62,21 @@ export function App() {
   const [calibrating, setCalibrating] = useState(false);
   const cornersRef = useRef<Corners | null>(corners);
   cornersRef.current = corners;
+
+  // Which side of the frame is high E. Default false = high E at the bottom
+  // (self-facing playing view); toggle if the overlay strings read upside down.
+  const [flipStrings, setFlipStrings] = useState<boolean>(
+    () => localStorage.getItem(FLIP_STRINGS_KEY) === "1",
+  );
+  const flipStringsRef = useRef(flipStrings);
+  flipStringsRef.current = flipStrings;
+  const toggleFlipStrings = () => {
+    setFlipStrings((f) => {
+      const next = !f;
+      localStorage.setItem(FLIP_STRINGS_KEY, next ? "1" : "0");
+      return next;
+    });
+  };
 
   const [classifier, setClassifier] = useState<Classifier | null>(null);
   const [trainCount, setTrainCount] = useState(0);
@@ -221,7 +237,7 @@ export function App() {
       }
 
       const c = cornersRef.current;
-      const H = c ? computeHomography(c) : null;
+      const H = c ? computeHomography(c, flipStringsRef.current) : null;
       let targets: Point[] = [];
       let openMarkers: Point[] = [];
       let mutedMarkers: Point[] = [];
@@ -522,6 +538,9 @@ export function App() {
               Recalibrate
             </button>
           )}
+          <button onClick={toggleFlipStrings} style={smallButton}>
+            {flipStrings ? "High E: top ⤒" : "High E: bottom ⤓"} — flip
+          </button>
           {corners && !calibrating && (
             <>
               <span style={dim}>Target chord</span>

@@ -26,10 +26,12 @@ export const STRINGS = 6;
 export const CALIBRATED_FRETS = 3; // the nut -> fret 3 span the user calibrates
 
 // The canonical corners the four dragged image corners correspond to, in App
-// order [nutTop, nutBottom, fret3Top, fret3Bottom]. In the self-facing view the
-// high-E string (v = 0) is at the BOTTOM, so the TOP handles are the low-E side
-// (v = 1) and the BOTTOM handles are the high-E side (v = 0):
-// [nut@string6, nut@string1, fret3@string6, fret3@string1].
+// order [nutTop, nutBottom, fret3Top, fret3Bottom]. Default: the self-facing
+// playing view puts high E (v = 0) at the BOTTOM, so the TOP handles are the
+// low-E side (v = 1) and the BOTTOM handles are the high-E side (v = 0):
+// [nut@string6, nut@string1, fret3@string6, fret3@string1]. Pass
+// `flipStrings` to computeHomography for setups where high E reads at the top
+// (it inverts v, mapping the top handles back to the high-E side).
 const CANONICAL_CORNERS: Point[] = [
   { x: 0, y: 1 },
   { x: 0, y: 0 },
@@ -61,12 +63,13 @@ function solveLinear(A: number[][], b: number[]): number[] | null {
 // Build the homography H (3x3, H[8] = 1) mapping CANONICAL_CORNERS -> the four
 // image corners the user dragged, in the same order. Returns null if the corners
 // are degenerate (collinear/coincident -> non-invertible).
-export function computeHomography(corners: Point[]): Mat3 | null {
+export function computeHomography(corners: Point[], flipStrings = false): Mat3 | null {
   if (corners.length !== 4) return null;
   const A: number[][] = [];
   const b: number[] = [];
   for (let i = 0; i < 4; i++) {
-    const { x: u, y: v } = CANONICAL_CORNERS[i];
+    const u = CANONICAL_CORNERS[i].x;
+    const v = flipStrings ? 1 - CANONICAL_CORNERS[i].y : CANONICAL_CORNERS[i].y;
     const { x, y } = corners[i];
     A.push([u, v, 1, 0, 0, 0, -u * x, -v * x]);
     b.push(x);
