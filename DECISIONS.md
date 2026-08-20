@@ -136,3 +136,39 @@ MediaPipe handedness label ("Left"/"Right") is the fretting hand; if only one
 hand is detected it's used regardless. The toggle exists because the mirrored
 feed can make the label read inverted (see Phase 0 note) — set it to whatever
 label showed on your fretting hand in the overlay.
+
+## 0008 — Phase 2: fretboard overlay, and the string-orientation fix
+
+Phase 2 adds the AR fingering overlay Phase 1 skipped. Locked design (from the
+approved spec, unchanged here):
+
+- **Localization = one-time manual 4-corner calibration**, no auto CV, no
+  per-frame tracking — static assumption + a Recalibrate button. Auto-detection
+  would re-fight the oblique, low-contrast self-facing angle every frame; not
+  worth it for a personal tool.
+- **Geometry = a full projective homography** from a canonical fretboard
+  rectangle (nut → fret 3, 6 strings, equal-temperament fret spacing) onto the
+  four dragged image corners. Pure, vitest-tested (`fretboard.ts`); the
+  fingering table (`chords.ts`) is hand-authored data, tested for consistency.
+- **Correctness check = whole-chord, reusing Phase 1 `classify_chord`.** The
+  rings are a reference diagram; the green "MATCH" state is the classifier's
+  opinion of the overall shape, not per-finger verification. It therefore
+  **inherits Phase 1's confusers** — notably Dm↔Am (0007) — so a Dm target can
+  read "match" while Am is fretted. The UI copy says this out loud.
+
+**Live-verification finding (the reason Task 7 exists):** calibration drag works
+and the grid tracks the fretboard, but the target rings drew **upside down** —
+in the self-facing playing view high E sits at the *bottom* of the frame, while
+the overlay assumed high E on top, so every ring landed on the mirror-image
+string. Same class of mirror ambiguity as the fretting-hand toggle (0004).
+
+- **Fix:** flipped the canonical v-axis so the default is high-E-at-bottom
+  (commit `aa12b8e`), then added a **persisted "flip strings" toggle**
+  (`computeHomography(corners, flipStrings)`, commit `0c13d97`) for setups where
+  a different mirror/camera/handedness inverts it. Default matches the observed
+  orientation; the toggle survives reload.
+
+**Status: not fully live-verified yet.** Confirmed live: calibration + the
+upside-down finding. *Pending:* re-checking ring alignment across a spread of
+shapes (C, G, D, Em) after the fix, and confirming the green match fires/clears
+correctly. Merge to `main` is held until that passes.
