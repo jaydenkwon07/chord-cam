@@ -88,6 +88,47 @@ takes), 13,132 samples total, 155 takes across all 8 chords.
 - Datasets are gitignored (`/data`) and passed by path to `npm run eval` /
   `scripts/loto.ts` — not committed, since they're large personal recordings.
 
+## 0007 — C/Dm/Am/D confuser family: mostly bad takes, a real residue underneath
+
+Dug into the 0006 confuser family with `scripts/diag.ts` (per-take LOTO). Per-take
+accuracy is bimodal, not uniformly mediocre: most takes score 100% or close to
+it, but 11 takes (6.9% of samples) score 0–85% and account for **84% of the
+total error mass** in C/D/Dm/Am. Those 11 cluster into two tight windows —
+5 consecutive takes (C, C, C, D, Am) in a 3-minute span on 2026-07-30, and 5
+consecutive Dm takes in an 80-second span on 2026-08-04 — the same
+session-drift artifact 0005 already caught once for C/Am.
+
+Re-running LOTO with just those 11 takes excluded:
+
+| | original | bad takes excluded |
+|---|---|---|
+| Overall | 95.5% | **97.5%** |
+| C | 94.0% | 99.1% |
+| Am | 96.9% | 98.6% |
+| D | 91.9% | 96.3% |
+| Dm | 90.6% | 93.8% |
+| C↔Dm confusion | 93 | 3 |
+
+C's confusion with Dm nearly vanishes once the bad takes are dropped — that
+part of 0006's confuser story was mostly session noise, not shape overlap.
+
+**What's left is real and didn't move when the noise was removed:**
+
+- **Dm↔Am (74→75, unchanged).** Both are compact minor-shape three-finger
+  clusters; `normalize()`'s position/scale/roll invariance is exactly what
+  makes them close — it can't see *which string* a finger lands on, only
+  relative finger geometry, and that's genuinely similar between these two.
+- **D→Em (57→52, barely moved).** Surprising since D (3 fingers) and Em
+  (2 fingers, sparse) shouldn't be geometrically close. Best working
+  hypothesis: occlusion, not shape — D's third finger (high on the B string)
+  intermittently drops out of detection and the landmark set collapses
+  toward Em's. Unconfirmed; would need frame-level inspection to be sure.
+
+**Action:** re-record the two flagged session windows (2026-07-30 18:13–18:17,
+2026-08-04 19:44–19:46) with a camera/position check first, then re-run
+`scripts/loto.ts` — expect a landing near 97.5%, with Dm↔Am and D→Em standing
+as the honest residual ceiling for this vocabulary, not a bug to keep chasing.
+
 ## 0004 — Fretting-hand selection
 
 Capture and live inference both act on a single hand. A UI toggle picks which
@@ -95,3 +136,39 @@ MediaPipe handedness label ("Left"/"Right") is the fretting hand; if only one
 hand is detected it's used regardless. The toggle exists because the mirrored
 feed can make the label read inverted (see Phase 0 note) — set it to whatever
 label showed on your fretting hand in the overlay.
+
+## 0008 — Phase 2: fretboard overlay, and the string-orientation fix
+
+Phase 2 adds the AR fingering overlay Phase 1 skipped. Locked design (from the
+approved spec, unchanged here):
+
+- **Localization = one-time manual 4-corner calibration**, no auto CV, no
+  per-frame tracking — static assumption + a Recalibrate button. Auto-detection
+  would re-fight the oblique, low-contrast self-facing angle every frame; not
+  worth it for a personal tool.
+- **Geometry = a full projective homography** from a canonical fretboard
+  rectangle (nut → fret 3, 6 strings, equal-temperament fret spacing) onto the
+  four dragged image corners. Pure, vitest-tested (`fretboard.ts`); the
+  fingering table (`chords.ts`) is hand-authored data, tested for consistency.
+- **Correctness check = whole-chord, reusing Phase 1 `classify_chord`.** The
+  rings are a reference diagram; the green "MATCH" state is the classifier's
+  opinion of the overall shape, not per-finger verification. It therefore
+  **inherits Phase 1's confusers** — notably Dm↔Am (0007) — so a Dm target can
+  read "match" while Am is fretted. The UI copy says this out loud.
+
+**Live-verification finding (the reason Task 7 exists):** calibration drag works
+and the grid tracks the fretboard, but the target rings drew **upside down** —
+in the self-facing playing view high E sits at the *bottom* of the frame, while
+the overlay assumed high E on top, so every ring landed on the mirror-image
+string. Same class of mirror ambiguity as the fretting-hand toggle (0004).
+
+- **Fix:** flipped the canonical v-axis so the default is high-E-at-bottom
+  (commit `aa12b8e`), then added a **persisted "flip strings" toggle**
+  (`computeHomography(corners, flipStrings)`, commit `0c13d97`) for setups where
+  a different mirror/camera/handedness inverts it. Default matches the observed
+  orientation; the toggle survives reload.
+
+**Status: live-verified, merged to `main`.** Confirmed on camera after the fix:
+calibration drag works, target rings land on the correct strings across a spread
+of shapes (C, G, D, Em), and the green match fires/clears correctly. Phase 2
+delivered.
